@@ -20,6 +20,8 @@
 #include <stdarg.h>
 #include <stdbool.h>
 
+using namespace std;
+
 #define NUM_TRIALS (100)
 
 // inclusive, that is, it's possible to have a 99 (but not a 100)
@@ -209,9 +211,9 @@ int cpy_brd(bool** dst, bool** src, int w, int h) {
 
 int simulate(int num_gens, int rank, int p, bool** slice_buf, int w, int h) {
   // allocate the memory for the temporary buffer
-  bool** slice_buf_tmp = (bool**) malloc(sizeof(bool*) * h);
+  bool** slice_buf_tmp = new bool*[h];
   for (int y=0; y<h; ++y) {
-    slice_buf_tmp[y] = (bool*) malloc(sizeof(bool) * w);
+    slice_buf_tmp[y] = new bool[w];
   }
   
   for (int igen=0; igen < num_gens; ++igen) {
@@ -220,13 +222,13 @@ int simulate(int num_gens, int rank, int p, bool** slice_buf, int w, int h) {
     // send the row to the slice *above*
     send_row(slice_buf[1], w, (rank+p-1)%p);
     
-    // share the row with the slice *below*
+    // send the row with the slice *below*
     send_row(slice_buf[h - 2], w, (rank+1)%p);
     
-    // grab the row from slice *above*
+    // grab the row from the slice *above*
     recv_row(slice_buf[0], w, (rank+p-1)%p);
     
-    // grab the row from slice *below*
+    // grab the row from the slice *below*
     recv_row(slice_buf[h - 1], w, (rank+1)%p);
 
     for (int y=1; y<h-1; ++y) {
@@ -247,19 +249,71 @@ int simulate(int num_gens, int rank, int p, bool** slice_buf, int w, int h) {
     }
   }
   
+  if (num_gens % 2 == 1) {
+    // uneven number of swaps in the simulation loop
+    bool** ptr_tmp = slice_buf_tmp;
+    slice_buf_tmp = slice_buf;
+    slice_buf = ptr_tmp;
+  }
+
   // deallocate the temporary buffer
   for (int y=0; y<h; ++y) {
-    free(slice_buf_tmp[y]);
+    delete[] slice_buf_tmp[y];
   }
-  free(slice_buf_tmp);
+  delete[] slice_buf_tmp;
+  return 0;
+}
+
+class GameOfLife {
+public:
+  //GameOfLife(int rank, int p, int w, int h): rank(rank), p(p), w(w), h(h) {}
+  GameOfLife(int rank, int p, int w, int h);
+
+  int print_brd();
+private:
+
+  int wrap_around_hori(bool** slice_buf, int w, int h);
+
+  // the slice buffer is 2 rows taller and 2 columns wider than the slice
+  bool** slice_buf;
+
+  int rank, p;
+  int w, h;
+};
+
+GameOfLife::GameOfLife(int rank, int p, int w, int h) {
+  this->rank = rank;
+  this->p    = p;
+  this->w    = w;
+  this->h    = h;
+}
+
+int print_brd() {
+  if (rank > 0) {
+    // send the slice to rank 0
+
+  } else {
+    // receive all of the slices and print them to stdout
+
+  }
+}
+
+int GameOfLife::wrap_around_hori() {
+  // we need not round the buffer rows because they are wrapped in their own slice
+  // (basically when they themselvse are not buffers)
+  for (int y=1; y<h-1; ++y) {
+    slice_buf[y][0]   = slice_buf[y][w-2];
+    slice_buf[y][w-1] = slice_buf[y][1];
+  }
   return 0;
 }
 
 int main(int argc, char** argv, char** envp) {
   assert(sizeof(bool) == 1);
   
-  int rank, p;
   //struct timeval t1, t2;
+
+  int rank, p;
 
   MPI_Init(&argc, &argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -301,9 +355,11 @@ int main(int argc, char** argv, char** envp) {
   */
   
   // allocate the memory for storing the slice
-  bool** slice_buf     = (bool**)malloc(sizeof(bool*) * slice_buf_height);
+  // allocate the memory contiguously to make sending/receiving simpler
+  bool* contiguousArr = new bool[slice_buf_height*BRD_BUF_WIDTH];
+  bool** slice_buf     = new bool[slice_buf_height];
   for (int row=0; row<slice_buf_height; ++row) {
-    slice_buf[row]     = (bool*) malloc(sizeof(bool) * BRD_BUF_WIDTH);
+    slice_buf[row] = contiguousArr + row*BRD_BUF_WIDTH;
   }
   
   rand_populate_slice(slice_buf, BRD_BUF_WIDTH, slice_buf_height);
@@ -338,10 +394,8 @@ int main(int argc, char** argv, char** envp) {
   
   
   //deallocate the slice's memory
-  for (int row=0; row<slice_buf_height; ++row) {
-    free(slice_buf[row]);
-  }
-  free(slice_buf);
+  delete[] slice_buf[0];
+  delete[] slice_buf;
   
   MPI_Finalize();
   return 0;
