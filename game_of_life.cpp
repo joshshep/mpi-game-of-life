@@ -128,6 +128,9 @@ public:
   int width, height;
   int buf_width, buf_height;
   int buf_size;
+
+  //DEBUG
+  int printBuf();  
 private:
   char cell_sprites[2];
   bool randBool();
@@ -173,6 +176,16 @@ int Slice::wrapAroundHori() {
 int Slice::print() {
   for (int y=1; y<buf_height-1; ++y) {
     for (int x=1; x<buf_width-1; ++x) {
+      printf("%c", cell_sprites[buf[y][x]]);
+    }
+    printf("\n");
+  }
+  return 0;
+}
+
+int Slice::printBuf() {
+  for (int y=0; y<buf_height; ++y) {
+    for (int x=0; x<buf_width; ++x) {
       printf("%c", cell_sprites[buf[y][x]]);
     }
     printf("\n");
@@ -239,6 +252,7 @@ public:
   GameOfLife(int rank, int p, int brd_w, int brd_h);
   ~GameOfLife();
   int printBoard();
+  int printBoardBuf();
   int runLife(Slice* dest_slice, Slice* src_slice);
   int runLife(Slice* dest_slice, Slice* src_slice, int x, int y);
   int simulate(int num_gens);
@@ -312,6 +326,28 @@ int GameOfLife::printBoard() {
   return 0;
 }
 
+int GameOfLife::printBoardBuf() {
+  if (rank > 0) {
+    // send the slice to rank 0
+    int dest_rank = 0;
+    MPI_Send(slice->buf[0], slice->buf_size, MPI_BYTE, dest_rank, 0, MPI_COMM_WORLD);
+  } else {
+    // receive all of the slices and print them to stdout
+    //first we need to print the first slice (rank0)
+    printf("r0:\n");
+    slice->printBuf();
+
+    MPI_Status status;
+    for (int src_rank=1; src_rank < p; ++src_rank) {
+      MPI_Recv(slice2->buf[0], slice2->buf_size, MPI_BYTE, src_rank, 0, MPI_COMM_WORLD, &status);
+      printf("r%d:\n", src_rank);
+      slice2->printBuf();
+    }
+  }
+  //MPI_Barrier(MPI_COMM_WORLD);
+  return 0;
+}
+
 int GameOfLife::simulate(int num_gens) {
   for (int igen=0; igen < num_gens; ++igen) {
     slice->wrapAroundHori();
@@ -340,7 +376,7 @@ int GameOfLife::simulate(int num_gens) {
     if (igen % BRD_PRINT_FREQ == 0) {
       const char* plural[2] = {"", "s"};
       syncPrintOnce(rank, "Board after %3d generation%s\n",igen+1, plural[(igen+1)!=1]);
-      printBoard();
+      printBoardBuf();
 
       // TODO: does this need to be here?
       // My concern is that rank 1 will loop to sendRowTo() and then there 
@@ -429,7 +465,7 @@ int main(int argc, char** argv, char** envp) {
 
   syncPrintOnce(rank, "Randomly initialized board\n");
   syncPrintOnce(rank, "------------------------------\n");
-  game.printBoard();
+  game.printBoardBuf();
   game.simulate(NUM_GENS);
   
   MPI_Finalize();
