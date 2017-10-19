@@ -18,6 +18,7 @@ public:
   ~GameOfLife();
   int printBoard();
   int printBoardBuf();
+  int shareRows();
   int runLife(Slice* dest_slice, Slice* src_slice);
   int runLife(Slice* dest_slice, Slice* src_slice, int x, int y);
   int simulate(int num_gens, int print_freq);

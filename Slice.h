@@ -9,8 +9,15 @@
 using namespace std;
 
 enum LifeState {
-  dead = false,
-  alive= true
+  dead = 0,
+  alive= 1
+};
+
+enum DirectionTag {
+  sendToAbove = 1,
+  recvFromBelow = 1,
+  sendToBelow = 2,
+  recvFromAbove = 2
 };
 
 class Slice {
@@ -21,12 +28,12 @@ public:
   int wrapAroundHori();
   int randPopulate();
 
-  int sendTo(int dest_rank);
-  int sendRowTo(int row, int dest_rank);
-  int recvFrom(int src_rank);
-  int recvRowFrom(int row, int src_rank);
+  int sendTo(int dest_rank, enum DirectionTag tag);
+  int sendRowTo(int row, int dest_rank, enum DirectionTag tag);
+  int recvFrom(int src_rank, enum DirectionTag tag);
+  int recvRowFrom(int row, int src_rank, enum DirectionTag tag);
   
-  bool** buf;
+  char** buf;
   int width, height;
   int buf_width, buf_height;
   int buf_size;
@@ -36,7 +43,7 @@ public:
 
 private:
   char cell_sprites[2];
-  bool randBool();
+  char randBool();
 };
 
 #endif

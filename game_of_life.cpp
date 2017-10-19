@@ -92,7 +92,7 @@ double avgTrialsPermutation(int f(int,int,int), int rank, int p, int rand_int, i
 
 
 int main(int argc, char** argv, char** envp) {
-  assert(sizeof(bool) == 1);
+  assert(sizeof(char) == 1);
   
   //struct timeval t1, t2;
 
@@ -114,9 +114,10 @@ int main(int argc, char** argv, char** envp) {
   
   GameOfLife game(rank, p, BRD_WIDTH, BRD_HEIGHT);
 
-  syncPrintOnce(rank, "Randomly initialized board\n");
+  syncPrintOnce(rank, "Randomly initialized board buf\n");
   syncPrintOnce(rank, "------------------------------\n");
-  game.printBoardBuf();
+  game.printBoard();
+
   game.simulate(NUM_GENS, BRD_PRINT_FREQ);
   
   MPI_Finalize();

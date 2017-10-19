@@ -24,6 +24,10 @@ GameOfLife::GameOfLife(int rank, int p, int brd_w, int brd_h) {
   this->slice2 = new Slice(brd_w, slice_height);
 
   slice->randPopulate();
+
+  // fill in the edges of the slice buf
+  slice->wrapAroundHori();
+  shareRows();
 }
 
 GameOfLife::~GameOfLife() {
@@ -75,35 +79,38 @@ int GameOfLife::printBoardBuf() {
   return 0;
 }
 
+int GameOfLife::shareRows() {
+  // send the row to the slice *above*
+  slice->sendRowTo(1, (rank+p-1)%p, sendToAbove);
+  
+  // send the row with the slice *below*
+  slice->sendRowTo(slice->buf_height - 2, (rank+1)%p, sendToBelow);
+
+  // grab the row from the slice *above*
+  slice->recvRowFrom(0, (rank+p-1)%p, recvFromAbove);
+  
+  // grab the row from the slice *below*
+  slice->recvRowFrom(slice->buf_height - 1, (rank+1)%p, recvFromBelow);
+
+  return 0;
+}
+
 int GameOfLife::simulate(int num_gens, int print_freq) {
   for (int igen=0; igen < num_gens; ++igen) {
-    slice->wrapAroundHori();
-
-    // send the row to the slice *above*
-    slice->sendRowTo(0, (rank+p-1)%p);
-
-    // send the row with the slice *below*
-    slice->sendRowTo(slice->buf_height - 1, (rank+1)%p);
-
-    // grab the row from the slice *above*
-    slice->recvRowFrom(0, (rank+p-1)%p);
-    
-    // grab the row from the slice *below*
-    slice->recvRowFrom(slice->buf_height - 1, (rank+1)%p);
-    
-    for (int y=1; y < slice->buf_height-1; ++y) {
-      for (int x=1; x < slice->buf_width-1; ++x) {
-        runLife(slice2, slice, x, y);
-      }
-    }
+    runLife(slice2, slice);
     
     // to get the new slice in slice_buf simply switch the pointers
     swap(slice, slice2);
+
+    // fill in the edges of the slice buf
+    slice->wrapAroundHori();
+    shareRows();
     
     if (igen % print_freq == 0) {
       const char* plural[2] = {"", "s"};
-      syncPrintOnce(rank, "Board after %3d generation%s\n",igen+1, plural[(igen+1)!=1]);
-      printBoardBuf();
+      syncPrintOnce(rank, "\nBoard after %d generation%s\n", igen+1, plural[(igen+1)!=1]);
+      syncPrintOnce(rank, "------------------------------\n");
+      printBoard();
 
       // TODO: does this need to be here?
       // My concern is that rank 1 will loop to sendRowTo() and then there 
@@ -112,11 +119,24 @@ int GameOfLife::simulate(int num_gens, int print_freq) {
     }
   }
 
-  if (num_gens % 2 == 1) {
-    // uneven number of swaps in the simulation loop
-    // swap back to get the most recent slice in "slice"
-    swap(slice, slice2);
+
+  if ((num_gens - 1) % print_freq != 0) {
+    const char* plural[2] = {"", "s"};
+    syncPrintOnce(rank, "\nBoard after %d generation%s\n", num_gens - 1, plural[(num_gens - 1)!=1]);
+    syncPrintOnce(rank, "------------------------------\n");
+    printBoard();
+
+    // TODO: does this need to be here?
+    // My concern is that rank 1 will loop to sendRowTo() and then there 
+    // would be 2 messages pending for rank 0 to receive from rank 1
+    //MPI_Barrier(MPI_COMM_WORLD);
   }
+  
+  // if (num_gens % 2 == 1) {
+  //   // uneven number of swaps in the simulation loop
+  //   // swap back to get the most recent slice in "slice"
+  //   swap(slice, slice2);
+  // }
 
   return 0;
 }

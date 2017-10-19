@@ -14,16 +14,16 @@ Slice::Slice(int w, int h) {
   // allocate the memory for storing the slice
   // allocate contiguously to make sending/receiving simpler
 
-  bool* contiguousArr = new bool [buf_width*buf_height];
-  this->buf           = new bool*[buf_height];
+  char* contiguousArr = new char [buf_width*buf_height];
+  this->buf           = new char*[buf_height];
   for (int y=0; y<buf_height; ++y) {
     this->buf[y] = contiguousArr + y*buf_width;
   }
 }
 
 Slice::~Slice() {
-delete[] buf[0];
-delete[] buf;
+  delete[] buf[0];
+  delete[] buf;
 }
 
 int Slice::wrapAroundHori() {
@@ -39,7 +39,7 @@ int Slice::wrapAroundHori() {
 int Slice::print() {
   for (int y=1; y<buf_height-1; ++y) {
     for (int x=1; x<buf_width-1; ++x) {
-      printf("%c", cell_sprites[buf[y][x]]);
+      printf("%c", cell_sprites[(int)buf[y][x]]);
     }
     printf("\n");
   }
@@ -49,7 +49,9 @@ int Slice::print() {
 int Slice::printBuf() {
   for (int y=0; y<buf_height; ++y) {
     for (int x=0; x<buf_width; ++x) {
-      printf("%c", cell_sprites[buf[y][x]]);
+      printf("%c", cell_sprites[(int)buf[y][x]]);
+      // DEBUG
+      //printf("%4d,", (int)buf[y][x]);
     }
     printf("\n");
   }
@@ -63,7 +65,7 @@ int Slice::randPopulate() {
     }
   }
 
-  //wrap_around_hori(buf, w, h);
+  wrapAroundHori();
   return 0;
 }
 
@@ -71,8 +73,8 @@ int Slice::randPopulate() {
  * Note: this sends the entire buffer containing the slice (h+2, w+2)
  * 
  * **/
-int Slice::sendTo(int dest_rank) {
-  MPI_Send(buf[0], buf_size, MPI_BYTE, dest_rank, 0, MPI_COMM_WORLD);
+int Slice::sendTo(int dest_rank, enum DirectionTag tag) {
+  MPI_Send(buf[0], buf_size, MPI_CHAR, dest_rank, tag, MPI_COMM_WORLD);
   return 0;
 }
 
@@ -80,9 +82,9 @@ int Slice::sendTo(int dest_rank) {
  * Note: this receives the entire buffer containing the slice (h+2, w+2)
  * 
  * **/
-int Slice::recvFrom(int src_rank) {
+int Slice::recvFrom(int src_rank, enum DirectionTag tag) {
   MPI_Status status;
-  MPI_Recv(buf[0], buf_size, MPI_BYTE, src_rank, 0, MPI_COMM_WORLD, &status);
+  MPI_Recv(buf[0], buf_size, MPI_CHAR, src_rank, tag, MPI_COMM_WORLD, &status);
   return 0;
 }
 
@@ -90,8 +92,8 @@ int Slice::recvFrom(int src_rank) {
  * Note: row==0 means this->buf[0]
  * 
  * **/
-int Slice::sendRowTo(int row, int dest_rank) {
-  MPI_Send(buf[row], buf_width, MPI_BYTE, dest_rank, 0, MPI_COMM_WORLD);
+int Slice::sendRowTo(int row, int dest_rank, enum DirectionTag tag) {
+  MPI_Send(buf[row], buf_width, MPI_CHAR, dest_rank, tag, MPI_COMM_WORLD);
   return 0;
 }
 
@@ -99,12 +101,12 @@ int Slice::sendRowTo(int row, int dest_rank) {
  * Note: row==0 means this->buf[0]
  * 
  * **/
-int Slice::recvRowFrom(int row, int src_rank) {
+int Slice::recvRowFrom(int row, int src_rank, enum DirectionTag tag) {
   MPI_Status status;
-  MPI_Recv(buf[row], buf_width, MPI_BYTE, src_rank, 0, MPI_COMM_WORLD, &status);
+  MPI_Recv(buf[row], buf_width, MPI_CHAR, src_rank, tag, MPI_COMM_WORLD, &status);
   return 0;
 }
 
-bool Slice::randBool() {
-  return rand() & 1;
+char Slice::randBool() {
+  return rand() & 0x1;
 }
