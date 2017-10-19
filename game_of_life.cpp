@@ -18,7 +18,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdarg.h>
-#include <stdbool.h>
+#include <algorithm>
 
 using namespace std;
 
@@ -95,7 +95,7 @@ double avg_trials_permutation(int f(int,int,int), int rank, int p, int rand_int,
 Sync the processors (with barriers) and only print if rank==0
 Otherwise acts as printf
 */
-int sync_print_once(int rank, const char* fmt, ...) {
+int syncPrintOnce(int rank, const char* fmt, ...) {
   MPI_Barrier(MPI_COMM_WORLD);
   if (rank == 0) {
     va_list args;
@@ -111,170 +111,26 @@ bool rand_bool() {
   return rand() & 1;
 }
 
-int wrap_around_hori(bool** slice_buf, int w, int h) {
-  // we need not round the buffer rows because they are wrapped in their own slice
-  // (basically when they themselvse are not buffers)
-  for (int row=1; row<h-1; ++row) {
-    slice_buf[row][0]   = slice_buf[row][w-2];
-    slice_buf[row][w-1] = slice_buf[row][1];
-  }
-  return 0;
-}
-
-int rand_populate_slice(bool** slice_buf, int w, int h) {
-  for (int y=1; y<h-1; ++y) {
-    for (int x=1; x<w-1; ++x) {
-      slice_buf[y][x] = rand_bool();
-    }
-  }
-  
-  wrap_around_hori(slice_buf, w, h);
-  
-  return 0;
-}
-
-int send_row(bool* row, int w, int dest_rank) {
-  return MPI_Send(row, w, MPI_BYTE, dest_rank, 0, MPI_COMM_WORLD);
-}
-
-int recv_row(bool* row, int w, int src_rank) {
-  MPI_Status status;
-  return MPI_Recv(row, w, MPI_BYTE, src_rank, 0, MPI_COMM_WORLD, &status);
-}
-
-int count_neighbors(bool** slice_buf, int x, int y) {
-  int sum = 0;
-  for (int i=x-1; i<=x+1; ++i) {
-    for (int j=y-1; j<=y+1; ++j) {
-      if (i!=x || j!=y)
-        if (slice_buf[j][i])
-          ++sum;
-    }
-  }
-  return sum;
-}
-
-int run_life(bool** new_slice_buf, bool** slice_buf, int x, int y) {
-  int num_neighbors = count_neighbors(slice_buf, x, y);
-  if (slice_buf[y][x]) {
-    // this is a live cell
-    if (num_neighbors < 2 || num_neighbors > 3) {
-      // dies by underpopulation
-      // OR
-      // dies by overpopulation
-      new_slice_buf[y][x] = dead;
-    } else {
-      // this is only necessary since we've written it so new_slice_buf can be potentially unintialized
-      new_slice_buf[y][x] = alive;
-    }
-  } else {
-    // dead cell
-    if (num_neighbors == 3) {
-      // perfect conditions for life :)
-      new_slice_buf[y][x] = alive;
-    } else {
-      new_slice_buf[y][x] = dead;
-    }
-  }
-  return 0;
-}
-
-int print_slice(bool** slice_buf, int w, int h) {
-  char sprites[2] = {'.','X'};
-  for (int y=1; y<h-1; ++y) {
-    for (int x=1; x<w-1; ++x) {
-      printf("%c",sprites[slice_buf[y][x]]);
-    }
-    printf("\n");
-  }
-  return 0;
-}
-
-int print_board(int rank, int p, bool** slice_buf, int w, int h) {
-  for (int r=0; r<p; ++r) {
-    if (r == rank) {
-      // its this rank's turn to print
-      printf("r%2d\n", rank);
-      print_slice(slice_buf, w, h);
-    }
-    MPI_Barrier(MPI_COMM_WORLD);
-  }
-  return 0;
-}
-
-int cpy_brd(bool** dst, bool** src, int w, int h) {
-  for (int y=0; y < h; ++y) {
-    memcpy(dst[y], src[y], w*sizeof(bool));
-  }
-  return 0;
-}
-
-int simulate(int num_gens, int rank, int p, bool** slice_buf, int w, int h) {
-  // allocate the memory for the temporary buffer
-  bool** slice_buf_tmp = new bool*[h];
-  for (int y=0; y<h; ++y) {
-    slice_buf_tmp[y] = new bool[w];
-  }
-  
-  for (int igen=0; igen < num_gens; ++igen) {
-    wrap_around_hori(slice_buf, w, h);
-
-    // send the row to the slice *above*
-    send_row(slice_buf[1], w, (rank+p-1)%p);
-    
-    // send the row with the slice *below*
-    send_row(slice_buf[h - 2], w, (rank+1)%p);
-    
-    // grab the row from the slice *above*
-    recv_row(slice_buf[0], w, (rank+p-1)%p);
-    
-    // grab the row from the slice *below*
-    recv_row(slice_buf[h - 1], w, (rank+1)%p);
-
-    for (int y=1; y<h-1; ++y) {
-      for (int x=1; x<w-1; ++x) {
-        run_life(slice_buf_tmp, slice_buf, x, y);
-      }
-    }
-    
-    // to get the new slice in slice_buf simply switch the pointers
-    bool** ptr_tmp = slice_buf_tmp;
-    slice_buf_tmp = slice_buf;
-    slice_buf = ptr_tmp;
-    
-    if (igen % BRD_PRINT_FREQ == 0) {
-      const char* plural[2] = {"", "s"};
-      sync_print_once(rank, "Board after %3d generation%s\n",igen+1, plural[igen!=1]);
-      print_board(rank, p, slice_buf, w, h);
-    }
-  }
-  
-  if (num_gens % 2 == 1) {
-    // uneven number of swaps in the simulation loop
-    bool** ptr_tmp = slice_buf_tmp;
-    slice_buf_tmp = slice_buf;
-    slice_buf = ptr_tmp;
-  }
-
-  // deallocate the temporary buffer
-  for (int y=0; y<h; ++y) {
-    delete[] slice_buf_tmp[y];
-  }
-  delete[] slice_buf_tmp;
-  return 0;
-}
-
 class Slice {
 public:
   Slice(int w, int h);
   ~Slice();
-  int printSlice();
+  int print();
   int wrapAroundHori();
+  int randPopulate();
 
+  int sendTo(int dest_rank);
+  int sendRowTo(int row, int dest_rank);
+  int recvFrom(int src_rank);
+  int recvRowFrom(int row, int src_rank);
+  
   bool** buf;
   int width, height;
   int buf_width, buf_height;
   int buf_size;
+private:
+  char cell_sprites[2];
+  bool randBool();
 };
 
 
@@ -285,6 +141,10 @@ Slice::Slice(int w, int h) {
   this->buf_width = w+2;
   this->buf_height = h+2;
   this->buf_size = buf_width * buf_height;
+
+  this->cell_sprites[dead]  = '.';
+  this->cell_sprites[alive] = 'X';
+
   // allocate the memory for storing the slice
   // allocate contiguously to make sending/receiving simpler
 
@@ -310,15 +170,82 @@ int Slice::wrapAroundHori() {
   return 0;
 }
 
+int Slice::print() {
+  for (int y=1; y<buf_height-1; ++y) {
+    for (int x=1; x<buf_width-1; ++x) {
+      printf("%c",cell_sprites[buf[y][x]]);
+    }
+    printf("\n");
+  }
+  return 0;
+}
+
+int Slice::randPopulate() {
+  for (int y=1; y<buf_height-1; ++y) {
+    for (int x=1; x<buf_width-1; ++x) {
+      buf[y][x] = randBool();
+    }
+  }
+  
+  //wrap_around_hori(buf, w, h);
+  return 0;
+}
+
+/**
+ * Note: this sends the entire buffer containing the slice (h+2, w+2)
+ * 
+ * **/
+int Slice::sendTo(int dest_rank) {
+  MPI_Send(buf[0], buf_size, MPI_BYTE, dest_rank, 0, MPI_COMM_WORLD);
+  return 0;
+}
+
+/**
+ * Note: this receives the entire buffer containing the slice (h+2, w+2)
+ * 
+ * **/
+int Slice::recvFrom(int src_rank) {
+  MPI_Status status;
+  MPI_Recv(buf[0], buf_size, MPI_BYTE, src_rank, 0, MPI_COMM_WORLD, &status);
+  return 0;
+}
+
+/**
+ * Note: row==0 means this->buf[1]
+ * 
+ * **/
+int Slice::sendRowTo(int row, int dest_rank) {
+  MPI_Send(buf[1+row], buf_width, MPI_BYTE, dest_rank, 0, MPI_COMM_WORLD);
+  return 0;
+}
+
+/**
+ * Note: row==0 means this->buf[1]
+ * 
+ * **/
+int Slice::recvRowFrom(int row, int src_rank) {
+  MPI_Status status;
+  MPI_Recv(buf[1+row], buf_width, MPI_BYTE, src_rank, 0, MPI_COMM_WORLD, &status);
+  return 0;
+}
+
+bool Slice::randBool() {
+  return rand() & 1;
+}
+
 class GameOfLife {
 public:
   //GameOfLife(int rank, int p, int w, int h): rank(rank), p(p), w(w), h(h) {}
   GameOfLife(int rank, int p, int brd_w, int brd_h);
-
-  int print_brd();
+  ~GameOfLife();
+  int printBoard();
+  int runLife(Slice* dest_slice, Slice* src_slice);
+  int runLife(Slice* dest_slice, Slice* src_slice, int x, int y);
+  int simulate(int num_gens);
 private:
 
   int wrap_around_hori();
+  int countNeighbors(Slice* s, int x, int y);
 
   // the slice buffer is 2 rows taller and 2 columns wider than the slice
   Slice* slice;
@@ -348,26 +275,125 @@ GameOfLife::GameOfLife(int rank, int p, int brd_w, int brd_h) {
     this->slice_row_start = rank*slice_height + (brd_h % p);
   }
 
+  assert(slice_height);
+
   this->slice  = new Slice(brd_w, slice_height);
   this->slice2 = new Slice(brd_w, slice_height);
+
+  slice->randPopulate();
 }
 
-int GameOfLife::print_brd() {
+GameOfLife::~GameOfLife() {
+  delete slice;
+  delete slice2;
+}
+
+int GameOfLife::printBoard() {
   if (rank > 0) {
     // send the slice to rank 0
     int dest_rank = 0;
     MPI_Send(slice->buf, slice->buf_size, MPI_BYTE, dest_rank, 0, MPI_COMM_WORLD);
   } else {
     // receive all of the slices and print them to stdout
-
     //first we need to print the first slice (rank0)
+    printf("r0:\n");
+    slice->print();
+
     MPI_Status status;
     for (int src_rank=1; src_rank < p; ++src_rank) {
       MPI_Recv(slice2->buf, slice2->buf_size, MPI_BYTE, src_rank, 0, MPI_COMM_WORLD, &status);
-
+      printf("r%d:\n", src_rank);
+      slice2->print();
     }
   }
   return 0;
+}
+
+int GameOfLife::simulate(int num_gens) {
+  for (int igen=0; igen < num_gens; ++igen) {
+    slice->wrapAroundHori();
+
+    // send the row to the slice *above*
+    slice->sendRowTo(0, (rank+p-1)%p);
+
+    // send the row with the slice *below*
+    slice->sendRowTo(slice->height - 1, (rank+1)  %p);
+
+    // grab the row from the slice *above*
+    slice->recvRowFrom(0, (rank+p-1)%p);
+    
+    // grab the row from the slice *below*
+    slice->recvRowFrom(slice->height - 1, (rank+1)  %p);
+    
+    for (int y=1; y < slice->buf_height-1; ++y) {
+      for (int x=1; x < slice->buf_width-1; ++x) {
+        runLife(slice2, slice, x, y);
+      }
+    }
+    
+    // to get the new slice in slice_buf simply switch the pointers
+    swap(slice, slice2);
+    
+    if (igen % BRD_PRINT_FREQ == 0) {
+      const char* plural[2] = {"", "s"};
+      syncPrintOnce(rank, "Board after %3d generation%s\n",igen+1, plural[igen!=1]);
+      slice->print();
+    }
+  }
+  
+  if (num_gens % 2 == 1) {
+    // uneven number of swaps in the simulation loop
+    // swap back to get the most recent slice in "slice"
+    swap(slice, slice2);
+  }
+
+  return 0;
+}
+
+int GameOfLife::runLife(Slice* dest_slice, Slice* src_slice) {
+  for (int y=1; y < src_slice->buf_height - 1; ++y) {
+    for (int x=1; x < src_slice->buf_width - 1; ++x) {
+      runLife(dest_slice, src_slice, x, y);
+    }
+  }
+  return 0;
+}
+
+int GameOfLife::runLife(Slice* dest_slice, Slice* src_slice, int x, int y) {
+  int num_neighbors = countNeighbors(src_slice, x, y);
+  if (src_slice->buf[y][x] == alive) {
+    // this is a live cell
+    if (num_neighbors < 2 || num_neighbors > 3) {
+      // dies by underpopulation
+      // OR
+      // dies by overpopulation
+      dest_slice->buf[y][x] = dead;
+    } else {
+      // this is only necessary since we've written it so new_slice_buf can be potentially unintialized
+      dest_slice->buf[y][x] = alive;
+    }
+  } else {
+    // dead cell
+    if (num_neighbors == 3) {
+      // perfect conditions for life :)
+      dest_slice->buf[y][x] = alive;
+    } else {
+      dest_slice->buf[y][x] = dead;
+    }
+  }
+  return 0;
+}
+
+int GameOfLife::countNeighbors(Slice* s, int x, int y) {
+  int sum = 0;
+  for (int i=x-1; i<=x+1; ++i) {
+    for (int j=y-1; j<=y+1; ++j) {
+      if (s->buf[j][i] == alive)
+        ++sum;
+    }
+  }
+  // return the sum of all 9 cells (minus 1 if the middle is alive)
+  return sum - (s->buf[y][x] == alive);
 }
 
 int main(int argc, char** argv, char** envp) {
@@ -395,69 +421,10 @@ int main(int argc, char** argv, char** envp) {
   i4: 20
   */
   
-  assert(p);
-  
-  int slice_row_start;
-  int slice_height = BRD_HEIGHT / p;
-  if (rank < (BRD_HEIGHT % p)) {
-    slice_row_start = rank*slice_height + rank;
-    ++slice_height;
-  } else {
-    slice_row_start = rank*slice_height + (BRD_HEIGHT % p);
-  }
-  
-  assert(slice_height); // ? we have more processors than rows
-  
-  printf("r%2d: slice_height: %3d ; slice_row_start: %3d\n", rank, slice_height, slice_row_start);
-  
-  int slice_buf_height = slice_height + 2;
-  /*
-  Note the disctinction between slice_height and slice_buf_height
-  We make the slice wider (by two cells) and taller (by two rows) to make the edge cases easier
-  */
-  
-  // allocate the memory for storing the slice
-  // allocate contiguously to make sending/receiving simpler
-  bool* contiguousArr = new bool[slice_buf_height*BRD_BUF_WIDTH];
-  bool** slice_buf     = new bool*[slice_buf_height];
-  for (int row=0; row<slice_buf_height; ++row) {
-    slice_buf[row] = contiguousArr + row*BRD_BUF_WIDTH;
-  }
-  
-  rand_populate_slice(slice_buf, BRD_BUF_WIDTH, slice_buf_height);
-  
-  sync_print_once(rank, "Board after random initialization\n");
-  print_board(rank, p, slice_buf, BRD_BUF_WIDTH, slice_buf_height);
-  /*
-  By convention:
-  
-  -----------------------------------
-  | | | | | | | | | | | | | | | | | |
-  -----------------------------------       rank0
-  | | | | | | | | | | | | | | | | | |
-  -----------------------------------
-  
-  -----------------------------------
-  | | | | | | | | | | | | | | | | | |
-  -----------------------------------       rank1
-  | | | | | | | | | | | | | | | | | |
-  -----------------------------------
-  
-  -----------------------------------
-  | | | | | | | | | | | | | | | | | |
-  -----------------------------------       rank2
-  | | | | | | | | | | | | | | | | | |
-  -----------------------------------
-  */
-  
-  //cpy_brd(slice_buf_tmp, slice_buf, BRD_BUF_WIDTH, slice_buf_height);
-  simulate(NUM_GENS, rank, p, slice_buf,  BRD_BUF_WIDTH, slice_buf_height);
-  
-  
-  
-  //deallocate the slice's memory
-  delete[] slice_buf[0];
-  delete[] slice_buf;
+  GameOfLife game(rank, p, BRD_WIDTH, BRD_HEIGHT);
+
+  game.printBoard();
+  //game.simulate(NUM_GENS);
   
   MPI_Finalize();
   return 0;
