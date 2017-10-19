@@ -26,15 +26,15 @@ using namespace std;
 
 // inclusive, that is, it's possible to have a 99 (but not a 100)
 
-#define BRD_HEIGHT     (16)
-#define BRD_WIDTH      (16)
+#define BRD_HEIGHT     (4)
+#define BRD_WIDTH      (4)
 #define BRD_BUF_WIDTH  (BRD_WIDTH + 2)
 #define BRD_PRINT_FREQ (1) // 1 -> print every cycle
 #define NUM_GENS       (1)
 
 enum LifeState {
-  dead=false,
-  alive=true
+  dead = false,
+  alive= true
 };
 
 typedef struct cell {
@@ -45,7 +45,7 @@ typedef struct cell {
 // modified from https://stackoverflow.com/a/6852396
 // Assumes 0 <= max <= RAND_MAX
 // Returns in the closed interval [0, max]
-long random_at_most(long max) {
+long randomAtMost(long max) {
   unsigned long
     // max <= RAND_MAX < ULONG_MAX, so this is okay.
     num_bins = (unsigned long) max + 1,
@@ -68,7 +68,7 @@ long random_at_most(long max) {
 Accepts a function to time and its parameters and averages over num_trials trials
 
 */
-double avg_trials_permutation(int f(int,int,int), int rank, int p, int rand_int, int num_trials) {
+double avgTrialsPermutation(int f(int,int,int), int rank, int p, int rand_int, int num_trials) {
   uint64_t usecs = 0;
   struct timeval t1, t2;
   int expected_sum = -1; // correct sums must always be non-negative
@@ -148,7 +148,7 @@ Slice::Slice(int w, int h) {
   // allocate the memory for storing the slice
   // allocate contiguously to make sending/receiving simpler
 
-  bool* contiguousArr = new bool[buf_width*buf_height];
+  bool* contiguousArr = new bool [buf_width*buf_height];
   this->buf           = new bool*[buf_height];
   for (int y=0; y<buf_height; ++y) {
     this->buf[y] = contiguousArr + y*buf_width;
@@ -163,7 +163,7 @@ Slice::~Slice() {
 int Slice::wrapAroundHori() {
   // we need not round the buffer rows because they are wrapped in their own slice
   // (basically when they themselvse are not buffers)
-  for (int y=1; y<buf_width-1; ++y) {
+  for (int y=1; y<buf_height-1; ++y) {
     buf[y][0]           = buf[y][buf_width-2];
     buf[y][buf_width-1] = buf[y][1];
   }
@@ -173,7 +173,7 @@ int Slice::wrapAroundHori() {
 int Slice::print() {
   for (int y=1; y<buf_height-1; ++y) {
     for (int x=1; x<buf_width-1; ++x) {
-      printf("%c",cell_sprites[buf[y][x]]);
+      printf("%c", cell_sprites[buf[y][x]]);
     }
     printf("\n");
   }
@@ -211,21 +211,21 @@ int Slice::recvFrom(int src_rank) {
 }
 
 /**
- * Note: row==0 means this->buf[1]
+ * Note: row==0 means this->buf[0]
  * 
  * **/
 int Slice::sendRowTo(int row, int dest_rank) {
-  MPI_Send(buf[1+row], buf_width, MPI_BYTE, dest_rank, 0, MPI_COMM_WORLD);
+  MPI_Send(buf[row], buf_width, MPI_BYTE, dest_rank, 0, MPI_COMM_WORLD);
   return 0;
 }
 
 /**
- * Note: row==0 means this->buf[1]
+ * Note: row==0 means this->buf[0]
  * 
  * **/
 int Slice::recvRowFrom(int row, int src_rank) {
   MPI_Status status;
-  MPI_Recv(buf[1+row], buf_width, MPI_BYTE, src_rank, 0, MPI_COMM_WORLD, &status);
+  MPI_Recv(buf[row], buf_width, MPI_BYTE, src_rank, 0, MPI_COMM_WORLD, &status);
   return 0;
 }
 
@@ -244,7 +244,6 @@ public:
   int simulate(int num_gens);
 private:
 
-  int wrap_around_hori();
   int countNeighbors(Slice* s, int x, int y);
 
   // the slice buffer is 2 rows taller and 2 columns wider than the slice
@@ -266,7 +265,10 @@ GameOfLife::GameOfLife(int rank, int p, int brd_w, int brd_h) {
   this->brd_w = brd_w;
   this->brd_h = brd_h;
 
+  // seed the random function differently for each processor
+  srand(time(NULL) + rank);
 
+  // determine this slice's height
   int slice_height = brd_h / p;
   if (rank < (brd_h % p)) {
     this->slice_row_start = rank*slice_height + rank;
@@ -292,7 +294,7 @@ int GameOfLife::printBoard() {
   if (rank > 0) {
     // send the slice to rank 0
     int dest_rank = 0;
-    MPI_Send(slice->buf, slice->buf_size, MPI_BYTE, dest_rank, 0, MPI_COMM_WORLD);
+    MPI_Send(slice->buf[0], slice->buf_size, MPI_BYTE, dest_rank, 0, MPI_COMM_WORLD);
   } else {
     // receive all of the slices and print them to stdout
     //first we need to print the first slice (rank0)
@@ -301,11 +303,12 @@ int GameOfLife::printBoard() {
 
     MPI_Status status;
     for (int src_rank=1; src_rank < p; ++src_rank) {
-      MPI_Recv(slice2->buf, slice2->buf_size, MPI_BYTE, src_rank, 0, MPI_COMM_WORLD, &status);
+      MPI_Recv(slice2->buf[0], slice2->buf_size, MPI_BYTE, src_rank, 0, MPI_COMM_WORLD, &status);
       printf("r%d:\n", src_rank);
       slice2->print();
     }
   }
+  //MPI_Barrier(MPI_COMM_WORLD);
   return 0;
 }
 
@@ -317,13 +320,13 @@ int GameOfLife::simulate(int num_gens) {
     slice->sendRowTo(0, (rank+p-1)%p);
 
     // send the row with the slice *below*
-    slice->sendRowTo(slice->height - 1, (rank+1)  %p);
+    slice->sendRowTo(slice->buf_height - 1, (rank+1)%p);
 
     // grab the row from the slice *above*
     slice->recvRowFrom(0, (rank+p-1)%p);
     
     // grab the row from the slice *below*
-    slice->recvRowFrom(slice->height - 1, (rank+1)  %p);
+    slice->recvRowFrom(slice->buf_height - 1, (rank+1)%p);
     
     for (int y=1; y < slice->buf_height-1; ++y) {
       for (int x=1; x < slice->buf_width-1; ++x) {
@@ -336,8 +339,13 @@ int GameOfLife::simulate(int num_gens) {
     
     if (igen % BRD_PRINT_FREQ == 0) {
       const char* plural[2] = {"", "s"};
-      syncPrintOnce(rank, "Board after %3d generation%s\n",igen+1, plural[igen!=1]);
-      slice->print();
+      syncPrintOnce(rank, "Board after %3d generation%s\n",igen+1, plural[(igen+1)!=1]);
+      printBoard();
+
+      // TODO: does this need to be here?
+      // My concern is that rank 1 will loop to sendRowTo() and then there 
+      // would be 2 messages pending for rank 0 to receive from rank 1
+      //MPI_Barrier(MPI_COMM_WORLD);
     }
   }
   
@@ -406,10 +414,6 @@ int main(int argc, char** argv, char** envp) {
   MPI_Init(&argc, &argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &p);
-
-
-  // seed the random function differently for each processor
-  srand(time(NULL) + rank);
   
   /*
   get the heights of the slices (of which there are rank) containing all rows.
@@ -423,8 +427,10 @@ int main(int argc, char** argv, char** envp) {
   
   GameOfLife game(rank, p, BRD_WIDTH, BRD_HEIGHT);
 
+  syncPrintOnce(rank, "Randomly initialized board\n");
+  syncPrintOnce(rank, "------------------------------\n");
   game.printBoard();
-  //game.simulate(NUM_GENS);
+  game.simulate(NUM_GENS);
   
   MPI_Finalize();
   return 0;
