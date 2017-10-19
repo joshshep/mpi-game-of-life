@@ -19,6 +19,8 @@ Slice::Slice(int w, int h) {
   for (int y=0; y<buf_height; ++y) {
     this->buf[y] = contiguousArr + y*buf_width;
   }
+
+  drawGlider();
 }
 
 Slice::~Slice() {
@@ -69,6 +71,11 @@ int Slice::randPopulate() {
   return 0;
 }
 
+int Slice::clear() {
+  memset(buf[0], 0, buf_size);
+  return 0;
+}
+
 /**
  * Note: this sends the entire buffer containing the slice (h+2, w+2)
  * 
@@ -109,4 +116,16 @@ int Slice::recvRowFrom(int row, int src_rank, enum DirectionTag tag) {
 
 char Slice::randBool() {
   return rand() & 0x1;
+}
+
+int Slice::drawGlider() {
+  buf[1][2] = alive;
+
+  buf[2][3] = alive;
+
+  buf[3][1] = alive;
+  buf[3][2] = alive;
+  buf[3][3] = alive;
+
+  return 0;
 }

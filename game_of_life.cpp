@@ -28,11 +28,11 @@ using namespace std;
 
 // inclusive, that is, it's possible to have a 99 (but not a 100)
 
-#define BRD_HEIGHT     (4)
-#define BRD_WIDTH      (4)
+#define BRD_HEIGHT     (16)
+#define BRD_WIDTH      (16)
 #define BRD_BUF_WIDTH  (BRD_WIDTH + 2)
 #define BRD_PRINT_FREQ (1) // 1 -> print every cycle
-#define NUM_GENS       (1)
+#define NUM_GENS       (100)
 
 
 typedef struct cell {
@@ -111,15 +111,24 @@ int main(int argc, char** argv, char** envp) {
   i3: 20
   i4: 20
   */
+  syncPrintOnce(rank, "Board dimensions x,y: %d, %d\n", BRD_WIDTH, BRD_HEIGHT);
+  
+  // GameOfLife game(rank, p, BRD_WIDTH, BRD_HEIGHT);
+  // game.randPopulate();
+  // syncPrintOnce(rank, "Randomly initialized board\n");
+  // syncPrintOnce(rank, "------------------------------\n");
+  // game.printBoard();
+
+  // game.simulate(NUM_GENS, BRD_PRINT_FREQ);
   
   GameOfLife game(rank, p, BRD_WIDTH, BRD_HEIGHT);
-
-  syncPrintOnce(rank, "Randomly initialized board buf\n");
+  game.drawGlider();
+  syncPrintOnce(rank, "Board with glider\n");
   syncPrintOnce(rank, "------------------------------\n");
   game.printBoard();
 
   game.simulate(NUM_GENS, BRD_PRINT_FREQ);
-  
+
   MPI_Finalize();
   return 0;
 }

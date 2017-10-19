@@ -23,11 +23,7 @@ GameOfLife::GameOfLife(int rank, int p, int brd_w, int brd_h) {
   this->slice  = new Slice(brd_w, slice_height);
   this->slice2 = new Slice(brd_w, slice_height);
 
-  slice->randPopulate();
-
-  // fill in the edges of the slice buf
-  slice->wrapAroundHori();
-  shareRows();
+  clear();
 }
 
 GameOfLife::~GameOfLife() {
@@ -172,6 +168,36 @@ int GameOfLife::runLife(Slice* dest_slice, Slice* src_slice, int x, int y) {
       dest_slice->buf[y][x] = dead;
     }
   }
+  return 0;
+}
+
+int GameOfLife::drawGlider() {
+  if (rank != 0) {
+    if (slice->height < 3 || slice->width < 3) {
+      printf("Couldn't print glider (slice too small)\n");
+    } else {
+      slice->drawGlider();
+    }
+  }
+
+  // fill in the edges of the slice buf
+  slice->wrapAroundHori();
+  shareRows();
+  
+  return 0;
+}
+
+int GameOfLife::randPopulate() {
+  slice->randPopulate();
+  
+  // fill in the edges of the slice buf
+  slice->wrapAroundHori();
+  shareRows();
+  return 0;
+}
+
+int GameOfLife::clear() {
+  slice->clear();
   return 0;
 }
 

@@ -27,6 +27,8 @@ public:
   int print();
   int wrapAroundHori();
   int randPopulate();
+  int clear();
+  int drawGlider();
 
   int sendTo(int dest_rank, enum DirectionTag tag);
   int sendRowTo(int row, int dest_rank, enum DirectionTag tag);

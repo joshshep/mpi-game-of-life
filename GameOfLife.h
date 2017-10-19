@@ -22,7 +22,9 @@ public:
   int runLife(Slice* dest_slice, Slice* src_slice);
   int runLife(Slice* dest_slice, Slice* src_slice, int x, int y);
   int simulate(int num_gens, int print_freq);
-  
+  int clear();
+  int drawGlider();
+  int randPopulate();
 private:
   int countNeighbors(Slice* s, int x, int y);
 
