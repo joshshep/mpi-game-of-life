@@ -264,46 +264,108 @@ int simulate(int num_gens, int rank, int p, bool** slice_buf, int w, int h) {
   return 0;
 }
 
+class Slice {
+public:
+  Slice(int w, int h);
+  ~Slice();
+  int printSlice();
+  int wrapAroundHori();
+
+  bool** buf;
+  int width, height;
+  int buf_width, buf_height;
+  int buf_size;
+};
+
+
+Slice::Slice(int w, int h) {
+  this->width = w;
+  this->height = h;
+
+  this->buf_width = w+2;
+  this->buf_height = h+2;
+  this->buf_size = buf_width * buf_height;
+  // allocate the memory for storing the slice
+  // allocate contiguously to make sending/receiving simpler
+
+  bool* contiguousArr = new bool[buf_width*buf_height];
+  this->buf           = new bool*[buf_height];
+  for (int y=0; y<buf_height; ++y) {
+    this->buf[y] = contiguousArr + y*buf_width;
+  }
+}
+
+Slice::~Slice() {
+  delete[] buf[0];
+  delete[] buf;
+}
+
+int Slice::wrapAroundHori() {
+  // we need not round the buffer rows because they are wrapped in their own slice
+  // (basically when they themselvse are not buffers)
+  for (int y=1; y<buf_width-1; ++y) {
+    buf[y][0]           = buf[y][buf_width-2];
+    buf[y][buf_width-1] = buf[y][1];
+  }
+  return 0;
+}
+
 class GameOfLife {
 public:
   //GameOfLife(int rank, int p, int w, int h): rank(rank), p(p), w(w), h(h) {}
-  GameOfLife(int rank, int p, int w, int h);
+  GameOfLife(int rank, int p, int brd_w, int brd_h);
 
   int print_brd();
 private:
 
-  int wrap_around_hori(bool** slice_buf, int w, int h);
+  int wrap_around_hori();
 
   // the slice buffer is 2 rows taller and 2 columns wider than the slice
-  bool** slice_buf;
+  Slice* slice;
+  Slice* slice2;
 
   int rank, p;
-  int w, h;
+  int brd_w, brd_h;
+  int slice_w, slice_h;
+  int slice_buf_w, slice_buf_h;
+
+  int slice_row_start;
+
 };
 
-GameOfLife::GameOfLife(int rank, int p, int w, int h) {
-  this->rank = rank;
-  this->p    = p;
-  this->w    = w;
-  this->h    = h;
+GameOfLife::GameOfLife(int rank, int p, int brd_w, int brd_h) {
+  this->rank  = rank;
+  this->p     = p;
+  this->brd_w = brd_w;
+  this->brd_h = brd_h;
+
+
+  int slice_height = brd_h / p;
+  if (rank < (brd_h % p)) {
+    this->slice_row_start = rank*slice_height + rank;
+    ++slice_height;
+  } else {
+    this->slice_row_start = rank*slice_height + (brd_h % p);
+  }
+
+  this->slice  = new Slice(brd_w, slice_height);
+  this->slice2 = new Slice(brd_w, slice_height);
 }
 
-int print_brd() {
+int GameOfLife::print_brd() {
   if (rank > 0) {
     // send the slice to rank 0
-
+    int dest_rank = 0;
+    MPI_Send(slice->buf, slice->buf_size, MPI_BYTE, dest_rank, 0, MPI_COMM_WORLD);
   } else {
     // receive all of the slices and print them to stdout
 
-  }
-}
+    //first we need to print the first slice (rank0)
+    MPI_Status status;
+    for (int src_rank=1; src_rank < p; ++src_rank) {
+      MPI_Recv(slice2->buf, slice2->buf_size, MPI_BYTE, src_rank, 0, MPI_COMM_WORLD, &status);
 
-int GameOfLife::wrap_around_hori() {
-  // we need not round the buffer rows because they are wrapped in their own slice
-  // (basically when they themselvse are not buffers)
-  for (int y=1; y<h-1; ++y) {
-    slice_buf[y][0]   = slice_buf[y][w-2];
-    slice_buf[y][w-1] = slice_buf[y][1];
+    }
   }
   return 0;
 }
@@ -355,9 +417,9 @@ int main(int argc, char** argv, char** envp) {
   */
   
   // allocate the memory for storing the slice
-  // allocate the memory contiguously to make sending/receiving simpler
+  // allocate contiguously to make sending/receiving simpler
   bool* contiguousArr = new bool[slice_buf_height*BRD_BUF_WIDTH];
-  bool** slice_buf     = new bool[slice_buf_height];
+  bool** slice_buf     = new bool*[slice_buf_height];
   for (int row=0; row<slice_buf_height; ++row) {
     slice_buf[row] = contiguousArr + row*BRD_BUF_WIDTH;
   }
