@@ -32,25 +32,25 @@ GameOfLife::~GameOfLife() {
 }
 
 int GameOfLife::printBoard() {
-if (rank > 0) {
-  // send the slice to rank 0
-  int dest_rank = 0;
-  MPI_Send(slice->buf[0], slice->buf_size, MPI_BYTE, dest_rank, 0, MPI_COMM_WORLD);
-} else {
-  // receive all of the slices and print them to stdout
-  //first we need to print the first slice (rank0)
-  printf("r0:\n");
-  slice->print();
+  if (rank > 0) {
+    // send the slice to rank 0
+    int dest_rank = 0;
+    MPI_Send(slice->buf[0], slice->buf_size, MPI_BYTE, dest_rank, 0, MPI_COMM_WORLD);
+  } else {
+    // receive all of the slices and print them to stdout
+    //first we need to print the first slice (rank0)
+    printf("r0:\n");
+    slice->print();
 
-  MPI_Status status;
-  for (int src_rank=1; src_rank < p; ++src_rank) {
-    MPI_Recv(slice2->buf[0], slice2->buf_size, MPI_BYTE, src_rank, 0, MPI_COMM_WORLD, &status);
-    printf("r%d:\n", src_rank);
-    slice2->print();
+    MPI_Status status;
+    for (int src_rank=1; src_rank < p; ++src_rank) {
+      MPI_Recv(slice2->buf[0], slice2->buf_size, MPI_BYTE, src_rank, 0, MPI_COMM_WORLD, &status);
+      printf("r%d:\n", src_rank);
+      slice2->print();
+    }
   }
-}
-//MPI_Barrier(MPI_COMM_WORLD);
-return 0;
+  //MPI_Barrier(MPI_COMM_WORLD);
+  return 0;
 }
 
 int GameOfLife::printBoardBuf() {
