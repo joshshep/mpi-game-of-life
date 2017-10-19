@@ -209,9 +209,9 @@ int cpy_brd(bool** dst, bool** src, int w, int h) {
 
 int simulate(int num_gens, int rank, int p, bool** slice_buf, int w, int h) {
   // allocate the memory for the temporary buffer
-  bool** slice_buf_tmp = malloc(sizeof(bool*) * h);
+  bool** slice_buf_tmp = (bool**) malloc(sizeof(bool*) * h);
   for (int y=0; y<h; ++y) {
-    slice_buf_tmp[y] = malloc(sizeof(bool) * w);
+    slice_buf_tmp[y] = (bool*) malloc(sizeof(bool) * w);
   }
   
   for (int igen=0; igen < num_gens; ++igen) {
@@ -241,7 +241,7 @@ int simulate(int num_gens, int rank, int p, bool** slice_buf, int w, int h) {
     slice_buf = ptr_tmp;
     
     if (igen % BRD_PRINT_FREQ == 0) {
-      char* plural[2] = {"", "s"};
+      const char* plural[2] = {"", "s"};
       sync_print_once(rank, "Board after %3d generation%s\n",igen+1, plural[igen!=1]);
       print_board(rank, p, slice_buf, w, h);
     }
@@ -301,9 +301,9 @@ int main(int argc, char** argv, char** envp) {
   */
   
   // allocate the memory for storing the slice
-  bool** slice_buf     = malloc(sizeof(bool*) * slice_buf_height);
+  bool** slice_buf     = (bool**)malloc(sizeof(bool*) * slice_buf_height);
   for (int row=0; row<slice_buf_height; ++row) {
-    slice_buf[row]     = malloc(sizeof(bool) * BRD_BUF_WIDTH);
+    slice_buf[row]     = (bool*) malloc(sizeof(bool) * BRD_BUF_WIDTH);
   }
   
   rand_populate_slice(slice_buf, BRD_BUF_WIDTH, slice_buf_height);

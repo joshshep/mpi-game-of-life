@@ -1,7 +1,7 @@
 # created by Joshua Shepherd
 
-CC=mpicc #nvcc
-CFLAGS=-Wall -std=c99 -lm
+CC = mpic++ #nvcc
+CPPFLAGS = -Wall -lm
 
 #CFLAGS=-std=c99 -Wall -O0 -m32# -DVERBOSE# -Iinclude
 
@@ -9,19 +9,19 @@ CFLAGS=-Wall -std=c99 -lm
 #VPATH = src include
 #CPPFLAGS=-std=c++11 -O3 -Wall
 #LDFLAGS=
-SRC=game_of_life.c
+SRC=game_of_life.cpp
 #INCLUDE=
-OBJ = $(SRC:.c=.o)
+OBJ = $(SRC:.cpp=.o)
 TARGET = game_of_life
 SUB_SCRIPT = sub.bash
 
 all: $(TARGET)
 
 $(TARGET): $(OBJ)
-	$(CC) $(CFLAGS) -o $(TARGET) $(OBJ)
+	$(CC) $(CPPFLAGS) -o $(TARGET) $(OBJ)
 	
-%.o: %.c
-	$(CC) $(CFLAGS) -c -o $@ $<
+%.o: %.cpp
+	$(CC) $(CPPFLAGS) -c -o $@ $<
 	
 run: all
 	sbatch -N2 $(SUB_SCRIPT)
