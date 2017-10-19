@@ -1,4 +1,4 @@
 #! /bin/bash
 
-mpirun -np 4 game_of_life
+mpirun -np 2 game_of_life
 
