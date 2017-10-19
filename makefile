@@ -9,7 +9,12 @@ CPPFLAGS = -Wall -lm
 #VPATH = src include
 #CPPFLAGS=-std=c++11 -O3 -Wall
 #LDFLAGS=
-SRC=game_of_life.cpp
+#automatically compile c++ files https://stackoverflow.com/a/2908351
+SRC_DIR := .
+OBJ_DIR := .
+SRC_FILES := $(wildcard $(SRC_DIR)/*.cpp)
+OBJ_FILES := $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(SRC_FILES))
+
 #INCLUDE=
 OBJ = $(SRC:.cpp=.o)
 TARGET = game_of_life
@@ -17,10 +22,10 @@ SUB_SCRIPT = sub.bash
 
 all: $(TARGET)
 
-$(TARGET): $(OBJ)
-	$(CC) $(CPPFLAGS) -o $(TARGET) $(OBJ)
+$(TARGET): $(OBJ_FILES)
+	$(CC) $(LDFLAGS) $(CPPFLAGS) -o $(TARGET) $(OBJ_FILES)
 	
-%.o: %.cpp
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
 	$(CC) $(CPPFLAGS) -c -o $@ $<
 	
 run: all
@@ -44,4 +49,4 @@ watch_run_all: all
 #disk:
 
 clean:
-	rm -rf $(OBJ) $(TARGET) *.out
+	rm -rf $(OBJ_FILES) $(TARGET) *.out
