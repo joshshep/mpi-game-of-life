@@ -21,8 +21,8 @@ public:
   int runLife(Slice* dest_slice, Slice* src_slice);
   int runLife(Slice* dest_slice, Slice* src_slice, int x, int y);
   int simulate(int num_gens, int print_freq);
+  
 private:
-
   int countNeighbors(Slice* s, int x, int y);
 
   // the slice buffer is 2 rows taller and 2 columns wider than the slice

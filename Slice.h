@@ -9,8 +9,8 @@
 using namespace std;
 
 enum LifeState {
-    dead = false,
-    alive= true
+  dead = false,
+  alive= true
 };
 
 class Slice {
@@ -32,13 +32,11 @@ public:
   int buf_size;
 
   //DEBUG
-  int printBuf();  
+  int printBuf();
+
 private:
   char cell_sprites[2];
   bool randBool();
 };
-
-
-
 
 #endif
