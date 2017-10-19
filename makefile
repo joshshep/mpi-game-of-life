@@ -27,7 +27,7 @@ run: all
 	sbatch -N2 $(SUB_SCRIPT)
 
 watch_run: all
-	sbatch -N2 $(SUB_SCRIPT)
+	sbatch -N4 $(SUB_SCRIPT)
 	./monitor.bash
 
 watch_run_all: all
