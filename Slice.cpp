@@ -20,7 +20,7 @@ Slice::Slice(int w, int h) {
     this->buf[y] = contiguousArr + y*buf_width;
   }
 
-  drawGlider();
+  //drawGlider();
 }
 
 Slice::~Slice() {
@@ -28,6 +28,10 @@ Slice::~Slice() {
   delete[] buf;
 }
 
+/**
+ * Copys the ends of the slice contents to the edges of the buffer
+ * 
+*/
 int Slice::wrapAroundHori() {
   // we need not round the buffer rows because they are wrapped in their own slice
   // (basically when they themselvse are not buffers)
@@ -38,6 +42,12 @@ int Slice::wrapAroundHori() {
   return 0;
 }
 
+
+/**
+ * Prints the slice contents (excluding duplicated buffer space)
+ * 
+ * 
+ * */
 int Slice::print() {
   for (int y=1; y<buf_height-1; ++y) {
     for (int x=1; x<buf_width-1; ++x) {
@@ -48,6 +58,10 @@ int Slice::print() {
   return 0;
 }
 
+
+/**
+ * Prints the slice buffer
+*/
 int Slice::printBuf() {
   for (int y=0; y<buf_height; ++y) {
     for (int x=0; x<buf_width; ++x) {
