@@ -1,7 +1,7 @@
 # created by Joshua Shepherd
 
 CC = mpic++ #nvcc
-CPPFLAGS = -Wall -lm
+CPPFLAGS = -Wall -lm -O3
 
 #CFLAGS=-std=c99 -Wall -O0 -m32# -DVERBOSE# -Iinclude
 
