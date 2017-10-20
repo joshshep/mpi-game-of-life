@@ -1,14 +1,15 @@
 #include "GameOfLife.h"
 
 GameOfLife::GameOfLife(int rank, int p, int brd_w, int brd_h) {
+  
   this->rank  = rank;
   this->p     = p;
   this->brd_w = brd_w;
   this->brd_h = brd_h;
-
+  
   // seed the random function differently for each processor
   srand(time(NULL) + rank);
-
+  
   // determine this slice's height
   int slice_height = brd_h / p;
   if (rank < (brd_h % p)) {
@@ -17,13 +18,14 @@ GameOfLife::GameOfLife(int rank, int p, int brd_w, int brd_h) {
   } else {
     this->slice_row_start = rank*slice_height + (brd_h % p);
   }
-
+  
   assert(slice_height);
 
   this->slice  = new Slice(brd_w, slice_height);
   this->slice2 = new Slice(brd_w, slice_height);
-
+  
   clear();
+  
 }
 
 GameOfLife::~GameOfLife() {
@@ -31,6 +33,10 @@ GameOfLife::~GameOfLife() {
   delete slice2;
 }
 
+/**
+ * Send all slices to rank 0 to print to stdout
+ * 
+*/
 int GameOfLife::printBoard() {
   if (rank > 0) {
     // send the slice to rank 0
@@ -53,6 +59,10 @@ int GameOfLife::printBoard() {
   return 0;
 }
 
+
+/**
+ * Send all slice buffers (including duplicated columns and rows) to rank 0 to print to stdout
+*/
 int GameOfLife::printBoardBuf() {
   if (rank > 0) {
     // send the slice to rank 0
@@ -75,6 +85,10 @@ int GameOfLife::printBoardBuf() {
   return 0;
 }
 
+/**
+ * Send/recv the edge rows on slices to/from other slices
+ * 
+*/
 int GameOfLife::shareRows() {
   // send the row to the slice *above*
   slice->sendRowTo(1, (rank+p-1)%p, sendToAbove);
@@ -87,56 +101,104 @@ int GameOfLife::shareRows() {
   
   // grab the row from the slice *below*
   slice->recvRowFrom(slice->buf_height - 1, (rank+1)%p, recvFromBelow);
-
+  
   return 0;
 }
 
-int GameOfLife::simulate(int num_gens, int print_freq) {
+
+
+/**
+ * Main processing loop.
+ * Simulates num_gens generations with print frequency print_freq  (e.g. 1 -> print every generation)
+*/
+struct Timings GameOfLife::simulate(int num_gens, int print_freq) {
+  struct Timings timings = {0};
+
+  struct timeval t1_running, t2_running;
+  struct timeval t1_comm, t2_comm;
+
+  gettimeofday(&t1_running, NULL);
+  
   for (int igen=0; igen < num_gens; ++igen) {
+  
+    //run life (main computation)
     runLife(slice2, slice);
-    
+
     // to get the new slice in slice_buf simply switch the pointers
     swap(slice, slice2);
 
     // fill in the edges of the slice buf
     slice->wrapAroundHori();
-    shareRows();
     
-    if (igen % print_freq == 0) {
+    
+
+    //communcation
+    gettimeofday(&t1_comm, NULL);
+    shareRows();
+    gettimeofday(&t2_comm, NULL);
+    timings.comm += (t2_comm.tv_sec-t1_comm.tv_sec)*1e6 + (t2_comm.tv_usec-t1_comm.tv_usec);
+
+    if (print_freq > 0 && igen % print_freq == 0) {
       const char* plural[2] = {"", "s"};
       syncPrintOnce(rank, "\nBoard after %d generation%s\n", igen+1, plural[(igen+1)!=1]);
       syncPrintOnce(rank, "------------------------------\n");
       printBoard();
 
-      // TODO: does this need to be here?
-      // My concern is that rank 1 will loop to sendRowTo() and then there 
-      // would be 2 messages pending for rank 0 to receive from rank 1
       //MPI_Barrier(MPI_COMM_WORLD);
     }
+    
+    
   }
 
-
-  if ((num_gens - 1) % print_freq != 0) {
+  // print one last time if we haven't printed the last generation
+  if (print_freq > 0 && (num_gens - 1) % print_freq != 0) {
     const char* plural[2] = {"", "s"};
     syncPrintOnce(rank, "\nBoard after %d generation%s\n", num_gens - 1, plural[(num_gens - 1)!=1]);
     syncPrintOnce(rank, "------------------------------\n");
     printBoard();
-
-    // TODO: does this need to be here?
-    // My concern is that rank 1 will loop to sendRowTo() and then there 
-    // would be 2 messages pending for rank 0 to receive from rank 1
     //MPI_Barrier(MPI_COMM_WORLD);
   }
-  
-  // if (num_gens % 2 == 1) {
-  //   // uneven number of swaps in the simulation loop
-  //   // swap back to get the most recent slice in "slice"
-  //   swap(slice, slice2);
-  // }
 
+  gettimeofday(&t2_running, NULL);
+  timings.running += (t2_running.tv_sec-t1_running.tv_sec)*1e6 + (t2_running.tv_usec-t1_running.tv_usec);
+  
+  return timings;
+}
+
+int GameOfLife::avgTimeSimulate(int num_gens, int print_freq) {
+  struct Timings timings = simulate(num_gens, print_freq);
+  if (rank > 0) {
+    // send timings
+    int dest_rank = 0;
+    MPI_Send(&timings, sizeof(struct Timings), MPI_BYTE, dest_rank, 0, MPI_COMM_WORLD);
+    return 0; 
+  }
+  //printf("t%2d: running: %12lu ; comm: %12lu\n", 0, timings.running, timings.comm);
+  MPI_Status status;
+  struct Timings timings_runner = {0};
+  // rank 0
+  for (int src_rank=1; src_rank<p; ++src_rank) {
+    MPI_Recv(&timings_runner, sizeof(struct Timings), MPI_BYTE, src_rank, 0, MPI_COMM_WORLD, &status);
+    //printf("t%2d: running: %12lu ; comm: %12lu\n", src_rank, timings_runner.running, timings_runner.comm);
+    
+    timings.running += timings_runner.running;
+    timings.comm += timings_runner.comm;
+  }
+  double avg_running    = (double) timings.running / (p * num_gens);
+  double avg_comm    = (double) timings.comm / (p * num_gens);
+  double avg_comp = (double) (timings.running - timings.comm) / (p * num_gens);
+  
+  printf("AVG\n");
+  printf("running:       %lf\n", avg_running);
+  printf("communication: %lf\n", avg_comm);
+  printf("computation:   %lf\n", avg_comp);
+  
   return 0;
 }
 
+/**
+ * Run life on src_slice and put the result in dest_slice
+*/
 int GameOfLife::runLife(Slice* dest_slice, Slice* src_slice) {
   for (int y=1; y < src_slice->buf_height - 1; ++y) {
     for (int x=1; x < src_slice->buf_width - 1; ++x) {
@@ -171,6 +233,13 @@ int GameOfLife::runLife(Slice* dest_slice, Slice* src_slice, int x, int y) {
   return 0;
 }
 
+
+
+/**
+ * TEST
+ * Draw a glider in rank 0's slice
+ * 
+*/
 int GameOfLife::drawGlider() {
   if (rank != 0) {
     if (slice->height < 3 || slice->width < 3) {

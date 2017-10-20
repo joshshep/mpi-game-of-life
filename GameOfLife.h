@@ -6,10 +6,19 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <mpi.h>
+#include <time.h>
+#include <sys/time.h>
+#include <stdint.h>
+
 
 #include "Slice.h"
 
 using namespace std;
+
+struct Timings {
+  uint64_t running;
+  uint64_t comm;
+};
 
 class GameOfLife {
 public:
@@ -21,14 +30,21 @@ public:
   int shareRows();
   int runLife(Slice* dest_slice, Slice* src_slice);
   int runLife(Slice* dest_slice, Slice* src_slice, int x, int y);
-  int simulate(int num_gens, int print_freq);
+  struct Timings simulate(int num_gens, int print_freq);
+  int avgTimeSimulate(int num_gens, int print_freq);
   int clear();
   int drawGlider();
   int randPopulate();
+
+  // function aliases as specified in project outline
+  // these names don't really follow the style guide so they are simply wrappers
+  int Simulate();
+  int DisplayGoL();
+  int GenerateGoL();
 private:
   int countNeighbors(Slice* s, int x, int y);
 
-  // the slice buffer is 2 rows taller and 2 columns wider than the slice
+  // the slice buffer is 2 rows taller and 2 columns wider than the slice itself
   Slice* slice;
   Slice* slice2;
 
@@ -38,6 +54,10 @@ private:
   int slice_buf_w, slice_buf_h;
 
   int slice_row_start;
+
+  // uint64_t time_run = 0;
+  // uint64_t time_comm = 0;
+  // uint
 
 };
 
