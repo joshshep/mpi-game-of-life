@@ -31,8 +31,8 @@ using namespace std;
 #define BRD_HEIGHT     (16)
 #define BRD_WIDTH      (16)
 #define BRD_BUF_WIDTH  (BRD_WIDTH + 2)
-#define BRD_PRINT_FREQ (1) // 1 -> print every cycle
-#define NUM_GENS       (100)
+#define BRD_PRINT_FREQ (0) // 1 -> print every cycle
+#define NUM_GENS       (1000)
 
 
 typedef struct cell {
@@ -61,33 +61,6 @@ long randomAtMost(long max) {
   // Truncated division is intentional
   return x/bin_size;
 }
-/*
-
-Accepts a function to time and its parameters and averages over num_trials trials
-
-*/
-double avgTrialsPermutation(int f(int,int,int), int rank, int p, int rand_int, int num_trials) {
-  uint64_t usecs = 0;
-  struct timeval t1, t2;
-  int expected_sum = -1; // correct sums must always be non-negative
-  
-  for (int i=0; i< num_trials; ++i) {
-    MPI_Barrier(MPI_COMM_WORLD);
-    gettimeofday(&t1,NULL);
-    int sum = f(rank, p, rand_int);
-    
-    //make sure all procs are finished before declaring "Done"
-    MPI_Barrier(MPI_COMM_WORLD);
-    gettimeofday(&t2,NULL);
-    uint64_t usec = (t2.tv_sec-t1.tv_sec)*1e6 + (t2.tv_usec-t1.tv_usec);
-    usecs += usec;
-    
-    // sanity check
-    assert(sum == expected_sum || expected_sum == -1);
-    expected_sum = sum;
-  }
-  return (double) usecs / num_trials;
-}
 
 
 
@@ -101,6 +74,10 @@ int main(int argc, char** argv, char** envp) {
   MPI_Init(&argc, &argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &p);
+  syncPrintOnce(rank, "################################################\n");
+  syncPrintOnce(rank, "################################################\n");
+  syncPrintOnce(rank, "################################################\n");
+  syncPrintOnce(rank, "p=%d, %d generations\n", p, NUM_GENS);
   
   /*
   get the heights of the slices (of which there are rank) containing all rows.
@@ -111,7 +88,7 @@ int main(int argc, char** argv, char** envp) {
   i3: 20
   i4: 20
   */
-  syncPrintOnce(rank, "Board dimensions x,y: %d, %d\n", BRD_WIDTH, BRD_HEIGHT);
+  //syncPrintOnce(rank, "Board dimensions x,y: %d, %d\n", BRD_WIDTH, BRD_HEIGHT);
   
   // GameOfLife game(rank, p, BRD_WIDTH, BRD_HEIGHT);
   // game.randPopulate();
@@ -120,15 +97,38 @@ int main(int argc, char** argv, char** envp) {
   // game.printBoard();
 
   // game.simulate(NUM_GENS, BRD_PRINT_FREQ);
-  
+  int starting_board_size_power = 2;
+  int last_board_size_power = 10;
+  for (int board_size_power = starting_board_size_power; 
+    board_size_power <= last_board_size_power; 
+    ++board_size_power)
+  {
+    int board_size = 1 << board_size_power;
+    syncPrintOnce(rank, "---------------------------------\n", BRD_WIDTH, BRD_HEIGHT);
+    syncPrintOnce(rank, "Board dimensions x,y: %d, %d\n", board_size, board_size);
+    if (board_size < p) {
+      syncPrintOnce(rank, "More processors than rows ... skipping (%d > %d)\n", p, board_size);
+      continue;
+    }
+    GameOfLife game(rank, p, board_size, board_size);
+
+    // TEST
+    //game.drawGlider();
+    
+    game.randPopulate();
+
+    game.avgTimeSimulate(NUM_GENS, BRD_PRINT_FREQ);
+  }
+
+  /*
   GameOfLife game(rank, p, BRD_WIDTH, BRD_HEIGHT);
   game.drawGlider();
   syncPrintOnce(rank, "Board with glider\n");
   syncPrintOnce(rank, "------------------------------\n");
   game.printBoard();
 
-  game.simulate(NUM_GENS, BRD_PRINT_FREQ);
-
+  game.avgTimeSimulate(NUM_GENS, BRD_PRINT_FREQ);
+  */
   MPI_Finalize();
   return 0;
 }
